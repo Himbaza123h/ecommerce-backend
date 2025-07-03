@@ -249,3 +249,98 @@ export const updateProfile = async (req, res) => {
     });
   }
 };
+
+// @desc    Get all users (Admin only)
+// @route   GET /api/auth/users
+// @access  Private/Admin
+export const getAllUsers = async (req, res) => {
+  try {
+    const { 
+      page = 1, 
+      limit = 10, 
+      active_only = "false", 
+      role = "", 
+      search = "" 
+    } = req.query;
+
+    // Build query object
+    let query = {};
+
+    // Filter by active status
+    if (active_only === "true") {
+      query.isActive = true;
+    }
+
+    // Filter by role
+    if (role && role !== "") {
+      query.role = role;
+    }
+
+    // Search functionality
+    if (search && search.trim() !== "") {
+      const searchRegex = new RegExp(search.trim(), 'i');
+      query.$or = [
+        { fullName: searchRegex },
+        { username: searchRegex },
+        { phone: searchRegex }
+      ];
+    }
+
+    // Execute query with pagination
+    const users = await User.find(query)
+      .select('-password') // Exclude password field
+      .sort({ createdAt: -1 }) // Sort by newest first
+      .limit(limit * 1)
+      .skip((page - 1) * limit);
+
+    // Get total count for pagination
+    const total = await User.countDocuments(query);
+
+    // Get user statistics
+    const stats = await User.aggregate([
+      {
+        $group: {
+          _id: null,
+          totalUsers: { $sum: 1 },
+          activeUsers: {
+            $sum: { $cond: [{ $eq: ["$isActive", true] }, 1, 0] }
+          },
+          inactiveUsers: {
+            $sum: { $cond: [{ $eq: ["$isActive", false] }, 1, 0] }
+          },
+          adminUsers: {
+            $sum: { $cond: [{ $eq: ["$role", "admin"] }, 1, 0] }
+          },
+          regularUsers: {
+            $sum: { $cond: [{ $eq: ["$role", "user"] }, 1, 0] }
+          }
+        }
+      }
+    ]);
+
+    const userStats = stats.length > 0 ? stats[0] : {
+      totalUsers: 0,
+      activeUsers: 0,
+      inactiveUsers: 0,
+      adminUsers: 0,
+      regularUsers: 0
+    };
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+      stats: userStats,
+      users
+    });
+
+  } catch (error) {
+    console.error('Get all users error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching users'
+    });
+  }
+};

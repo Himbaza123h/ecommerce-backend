@@ -6,6 +6,9 @@ import connectDB from './src/config/database.js';
 import authRoutes from './src/routes/auth.js';
 import categoryRoutes from './src/routes/category.js'; 
 import productRoutes from './src/routes/product.js';
+import serviceRoutes from './src/routes/service.js';
+import groupRoutes  from './src/routes/group.js';
+import blogRoutes  from './src/routes/blog.js';
 
 // Load environment variables
 dotenv.config();
@@ -46,7 +49,10 @@ app.get('/health', (req, res) => {
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/categories', categoryRoutes); // Add this line
+app.use('/api/services', serviceRoutes); // Add this line
 app.use('/api/products', productRoutes);
+app.use('/api/groups', groupRoutes);
+app.use('/api/blogs', blogRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

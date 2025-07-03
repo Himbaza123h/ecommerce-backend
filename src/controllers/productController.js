@@ -1,6 +1,7 @@
 import Product from "../models/Product.js";
 import ProductImage from "../models/ProductImage.js";
 import Category from "../models/Category.js";
+import Group from "../models/Group.js";
 import {
   uploadImage,
   deleteImage,
@@ -10,8 +11,15 @@ import {
 // Create new product
 export const createProduct = async (req, res) => {
   try {
-    const { name, category_id, color, price, quantity, expiration_date } =
-      req.body;
+    const {
+      name,
+      category_id,
+      group_id,
+      color,
+      price,
+      quantity,
+      expiration_date,
+    } = req.body;
 
     // Verify category exists and is active
     const category = await Category.findById(category_id);
@@ -29,10 +37,26 @@ export const createProduct = async (req, res) => {
       });
     }
 
+    const group = await Group.findById(group_id);
+    if (!group) {
+      return res.status(400).json({
+        success: false,
+        message: "Group not found",
+      });
+    }
+
+    if (!group.is_active) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot create product in inactive group",
+      });
+    }
+
     // Create product
     const product = new Product({
       name,
       category_id,
+      group_id,
       color,
       price: parseFloat(price),
       quantity: parseInt(quantity),
@@ -72,10 +96,9 @@ export const createProduct = async (req, res) => {
     await category.incrementCount();
 
     // Populate the response with category and images
-    const populatedProduct = await Product.findById(savedProduct._id).populate(
-      "category_id",
-      "name slug"
-    );
+    const populatedProduct = await Product.findById(savedProduct._id)
+      .populate("category_id", "name slug")
+      .populate("group_id", "name slug");
 
     const productImages = await ProductImage.getProductImages(savedProduct._id);
 
@@ -105,6 +128,7 @@ export const getAllProducts = async (req, res) => {
       limit = 10,
       search = "",
       category_id,
+      group_id,
       is_active,
       in_stock,
       min_price,
@@ -126,6 +150,10 @@ export const getAllProducts = async (req, res) => {
 
     if (category_id) {
       query.category_id = category_id;
+    }
+
+    if (group_id) {
+      query.group_id = group_id;
     }
 
     if (is_active !== undefined) {
@@ -172,6 +200,7 @@ export const getAllProducts = async (req, res) => {
 
     const products = await Product.find(query)
       .populate("category_id", "name slug logo_url")
+      .populate("group_id", "name slug")
       .sort(sortOptions)
       .skip(skip)
       .limit(parseInt(limit));
@@ -212,7 +241,7 @@ export const getAllProducts = async (req, res) => {
 // Get active products only
 export const getActiveProducts = async (req, res) => {
   try {
-    const { category_id, limit = 20 } = req.query;
+    const { category_id, group_id, limit = 20 } = req.query;
 
     const query = {
       is_active: true,
@@ -223,8 +252,13 @@ export const getActiveProducts = async (req, res) => {
       query.category_id = category_id;
     }
 
+    if (group_id) {
+      query.group_id = group_id;
+    }
+
     const products = await Product.find(query)
       .populate("category_id", "name slug")
+      .populate("group_id", "name slug")
       .sort({ createdAt: -1 })
       .limit(parseInt(limit));
 
@@ -258,10 +292,9 @@ export const getActiveProducts = async (req, res) => {
 export const getProductById = async (req, res) => {
   try {
     const { id } = req.params;
-    const product = await Product.findById(id).populate(
-      "category_id",
-      "name slug description logo_url"
-    );
+    const product = await Product.findById(id)
+      .populate("category_id", "name slug description logo_url")
+      .populate("group_id", "name slug description");
 
     if (!product) {
       return res.status(404).json({
@@ -293,10 +326,10 @@ export const getProductById = async (req, res) => {
 export const getProductBySlug = async (req, res) => {
   try {
     const { slug } = req.params;
-    const product = await Product.findOne({ slug, is_active: true }).populate(
-      "category_id",
-      "name slug description logo_url"
-    );
+
+    const product = await Product.findOne({ slug, is_active: true })
+      .populate("category_id", "name slug description logo_url")
+      .populate("group_id", "name slug description");
 
     if (!product) {
       return res.status(404).json({
@@ -331,6 +364,7 @@ export const updateProduct = async (req, res) => {
     const {
       name,
       category_id,
+      group_id,
       color,
       price,
       quantity,
@@ -364,6 +398,23 @@ export const updateProduct = async (req, res) => {
         });
       }
 
+      if (group_id && group_id !== product.group_id.toString()) {
+        const newGroup = await Group.findById(group_id);
+        if (!newGroup) {
+          return res.status(400).json({
+            success: false,
+            message: "New group not found",
+          });
+        }
+
+        if (!newGroup.is_active) {
+          return res.status(400).json({
+            success: false,
+            message: "Cannot move product to inactive group",
+          });
+        }
+      }
+
       // Update category counts
       const oldCategory = await Category.findById(product.category_id);
       if (oldCategory) {
@@ -375,6 +426,7 @@ export const updateProduct = async (req, res) => {
     // Update fields
     if (name) product.name = name;
     if (category_id) product.category_id = category_id;
+    if (group_id) product.group_id = group_id;
     if (color) product.color = color;
     if (price !== undefined) product.price = parseFloat(price);
     if (quantity !== undefined) product.quantity = parseInt(quantity);
@@ -384,9 +436,9 @@ export const updateProduct = async (req, res) => {
     const updatedProduct = await product.save();
 
     // Populate the response
-    const populatedProduct = await Product.findById(
-      updatedProduct._id
-    ).populate("category_id", "name slug");
+    const populatedProduct = await Product.findById(updatedProduct._id)
+      .populate("category_id", "name slug")
+      .populate("group_id", "name slug");
 
     const images = await ProductImage.getProductImages(updatedProduct._id);
 
@@ -771,6 +823,37 @@ export const getProductStats = async (req, res) => {
       },
     ]);
 
+    const productsByGroup = await Product.aggregate([
+      {
+        $group: {
+          _id: "$group_id",
+          count: { $sum: 1 },
+          total_value: { $sum: { $multiply: ["$price", "$quantity"] } },
+        },
+      },
+      {
+        $lookup: {
+          from: "groups",
+          localField: "_id",
+          foreignField: "_id",
+          as: "group",
+        },
+      },
+      {
+        $unwind: "$group",
+      },
+      {
+        $project: {
+          group_name: "$group.name",
+          count: 1,
+          total_value: 1,
+        },
+      },
+      {
+        $sort: { count: -1 },
+      },
+    ]);
+
     // Top selling products (by quantity)
     const topProducts = await Product.find({ is_active: true })
       .populate("category_id", "name")
@@ -803,6 +886,7 @@ export const getProductStats = async (req, res) => {
         expired_products: expiredProducts,
         low_stock_products: lowStockProducts,
         products_by_category: productsByCategory,
+        products_by_group: productsByGroup,
         top_products: topProducts,
         price_statistics: priceStats[0] || {
           min_price: 0,
@@ -817,6 +901,213 @@ export const getProductStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to fetch product statistics",
+      error: error.message,
+    });
+  }
+};
+
+// Get products by group ID
+export const getProductsByGroup = async (req, res) => {
+  try {
+    const { group_id } = req.params;
+    const {
+      page = 1,
+      limit = 10,
+      search = "",
+      category_id,
+      is_active,
+      in_stock,
+      min_price,
+      max_price,
+      color,
+      sort = "-createdAt",
+      include_expired = "false",
+    } = req.query;
+
+    // Verify group exists and is active
+    const group = await Group.findById(group_id);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: "Group not found",
+      });
+    }
+
+    if (!group.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Group is not active",
+      });
+    }
+
+    // Build query
+    const query = { group_id };
+
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: "i" } },
+        { color: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    if (category_id) {
+      query.category_id = category_id;
+    }
+
+    if (is_active !== undefined) {
+      query.is_active = is_active === "true";
+    }
+
+    if (in_stock === "true") {
+      query.quantity = { $gt: 0 };
+    } else if (in_stock === "false") {
+      query.quantity = 0;
+    }
+
+    if (min_price || max_price) {
+      query.price = {};
+      if (min_price) query.price.$gte = parseFloat(min_price);
+      if (max_price) query.price.$lte = parseFloat(max_price);
+    }
+
+    if (color) {
+      query.color = { $regex: color, $options: "i" };
+    }
+
+    // Handle expiration filter
+    if (include_expired === "false") {
+      const today = new Date().toISOString().split("T")[0];
+      query.expiration_date = { $gt: today };
+    }
+
+    // Sort options
+    const sortOptions = {};
+    if (sort === "name") sortOptions.name = 1;
+    else if (sort === "-name") sortOptions.name = -1;
+    else if (sort === "price") sortOptions.price = 1;
+    else if (sort === "-price") sortOptions.price = -1;
+    else if (sort === "quantity") sortOptions.quantity = 1;
+    else if (sort === "-quantity") sortOptions.quantity = -1;
+    else if (sort === "createdAt") sortOptions.createdAt = 1;
+    else if (sort === "-createdAt") sortOptions.createdAt = -1;
+    else if (sort === "expiration_date") sortOptions.expiration_date = 1;
+    else if (sort === "-expiration_date") sortOptions.expiration_date = -1;
+    else sortOptions.createdAt = -1;
+
+    // Pagination
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const products = await Product.find(query)
+      .populate("category_id", "name slug logo_url")
+      .populate("group_id", "name slug")
+      .sort(sortOptions)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    // Get images for each product
+    const productsWithImages = await Promise.all(
+      products.map(async (product) => {
+        const images = await ProductImage.getProductImages(product._id);
+        return {
+          ...product.toObject(),
+          images,
+        };
+      })
+    );
+
+    const total = await Product.countDocuments(query);
+
+    res.json({
+      success: true,
+      message: `Products for group: ${group.name}`,
+      data: productsWithImages,
+      group_info: {
+        id: group._id,
+        name: group.name,
+        slug: group.slug,
+        description: group.description,
+        members_count: group.members_count,
+      },
+      pagination: {
+        current_page: parseInt(page),
+        total_pages: Math.ceil(total / parseInt(limit)),
+        total_items: total,
+        items_per_page: parseInt(limit),
+      },
+    });
+  } catch (error) {
+    console.error("Get products by group error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch products for group",
+      error: error.message,
+    });
+  }
+};
+
+// Get active products by group ID (for public viewing)
+export const getActiveProductsByGroup = async (req, res) => {
+  try {
+    const { group_id } = req.params;
+    const { limit = 20 } = req.query;
+
+    // Verify group exists and is active
+    const group = await Group.findById(group_id);
+    if (!group) {
+      return res.status(404).json({
+        success: false,
+        message: "Group not found",
+      });
+    }
+
+    if (!group.is_active) {
+      return res.status(403).json({
+        success: false,
+        message: "Group is not active",
+      });
+    }
+
+    const query = {
+      group_id,
+      is_active: true,
+      expiration_date: { $gt: new Date().toISOString().split("T")[0] },
+    };
+
+    const products = await Product.find(query)
+      .populate("category_id", "name slug")
+      .populate("group_id", "name slug")
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit));
+
+    // Get images for each product
+    const productsWithImages = await Promise.all(
+      products.map(async (product) => {
+        const images = await ProductImage.getProductImages(product._id);
+        return {
+          ...product.toObject(),
+          images,
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      message: `Active products for group: ${group.name}`,
+      data: productsWithImages,
+      count: productsWithImages.length,
+      group_info: {
+        id: group._id,
+        name: group.name,
+        slug: group.slug,
+        description: group.description,
+        members_count: group.members_count,
+      },
+    });
+  } catch (error) {
+    console.error("Get active products by group error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch active products for group",
       error: error.message,
     });
   }

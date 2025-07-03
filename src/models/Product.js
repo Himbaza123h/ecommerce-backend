@@ -13,6 +13,12 @@ const productSchema = new mongoose.Schema(
       ref: "Category",
       required: [true, "Category is required"],
     },
+
+    group_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Group",
+      required: [true, "Group is required"],
+    },
     color: {
       type: String,
       required: [true, "Product color is required"],
@@ -85,6 +91,7 @@ productSchema.pre("save", async function (next) {
 productSchema.index({ name: 1 });
 productSchema.index({ slug: 1 });
 productSchema.index({ category_id: 1 });
+productSchema.index({ group_id: 1 });
 productSchema.index({ is_active: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ createdAt: -1 });
@@ -161,6 +168,10 @@ productSchema.methods.reduceQuantity = function (amount) {
 productSchema.methods.addQuantity = function (amount) {
   this.quantity += amount;
   return this.save();
+};
+
+productSchema.statics.getProductsByGroup = function (groupId) {
+  return this.find({ group_id: groupId, is_active: true });
 };
 
 const Product = mongoose.model("Product", productSchema);

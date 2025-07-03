@@ -16,6 +16,9 @@ import {
   deleteProductImage,
   setPrimaryImage,
   getProductStats,
+  getProductsByGroup,
+  getActiveProductsByGroup,
+  
 } from "../controllers/productController.js";
 
 import {
@@ -145,5 +148,10 @@ router.patch(
   handleValidationErrors,
   setPrimaryImage
 );
+
+router.get("/group/:group_id", getProductsByGroup);
+
+// Get active products by group (public endpoint)
+router.get("/group/:group_id/active", getActiveProductsByGroup);
 
 export default router;
