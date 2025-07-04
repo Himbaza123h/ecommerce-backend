@@ -1,5 +1,5 @@
 import express from 'express';
-import { uploadMultiple } from "../middleware/multer.js";
+import { uploadBlogFiles } from "../middleware/multer.js";
 import { adminAuth } from "../middleware/adminMiddleware.js";
 import {
   createBlog,
@@ -29,12 +29,12 @@ router.put('/:id/like', likeBlog);
 router.use(protect);
 
 // Admin only routes
-router.post('/', adminAuth, uploadMultiple([
+router.post('/', adminAuth, uploadBlogFiles([
   { name: 'thumbnail', maxCount: 1 },
   { name: 'gallery', maxCount: 10 }
 ]), createBlog);
 
-router.put('/:id', adminAuth, uploadMultiple([
+router.put('/:id', adminAuth, uploadBlogFiles([
   { name: 'thumbnail', maxCount: 1 },
   { name: 'gallery', maxCount: 10 }
 ]), updateBlog);

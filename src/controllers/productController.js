@@ -5,7 +5,6 @@ import Group from "../models/Group.js";
 import {
   uploadImage,
   deleteImage,
-  uploadMultipleImages,
 } from "../config/cloudinary.js";
 
 // Create new product

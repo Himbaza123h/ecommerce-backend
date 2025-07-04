@@ -48,6 +48,78 @@ export const uploadSingle = (fieldName) => {
   };
 };
 
+
+// Middleware for multiple field uploads
+export const uploadBlogFiles = (fields) => {
+  return (req, res, next) => {
+    // If it's an array of field objects, use upload.fields()
+    if (Array.isArray(fields)) {
+      upload.fields(fields)(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+              success: false,
+              message: 'File too large. Maximum size is 5MB per file'
+            });
+          }
+          if (err.code === 'LIMIT_FILE_COUNT') {
+            return res.status(400).json({
+              success: false,
+              message: 'Too many files uploaded'
+            });
+          }
+          if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            return res.status(400).json({
+              success: false,
+              message: 'Unexpected field name in form data'
+            });
+          }
+          return res.status(400).json({
+            success: false,
+            message: `Upload error: ${err.message}`
+          });
+        } else if (err) {
+          return res.status(400).json({
+            success: false,
+            message: err.message
+          });
+        }
+        next();
+      });
+    } else {
+      // If it's a single field name, use upload.array()
+      const fieldName = fields;
+      const maxCount = arguments[1] || 5;
+      upload.array(fieldName, maxCount)(req, res, (err) => {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+              success: false,
+              message: 'File too large. Maximum size is 5MB per file'
+            });
+          }
+          if (err.code === 'LIMIT_FILE_COUNT') {
+            return res.status(400).json({
+              success: false,
+              message: `Too many files. Maximum allowed is ${maxCount}`
+            });
+          }
+          return res.status(400).json({
+            success: false,
+            message: `Upload error: ${err.message}`
+          });
+        } else if (err) {
+          return res.status(400).json({
+            success: false,
+            message: err.message
+          });
+        }
+        next();
+      });
+    }
+  };
+};
+
 // Middleware for multiple files upload
 export const uploadMultiple = (fieldName, maxCount = 5) => {
   return (req, res, next) => {
