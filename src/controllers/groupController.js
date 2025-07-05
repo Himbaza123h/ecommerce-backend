@@ -505,9 +505,14 @@ export const joinGroup = async (req, res) => {
       message,
     };
 
-    // Add redirect_link only for public groups (not private)
-    if (!group.is_private && group.link) {
-      responseData.redirect_link = group.link;
+    // Add redirect_link for public groups
+    if (!group.is_private) {
+      // If no link found or link is undefined, use default link
+      if (!group.link) {
+        responseData.redirect_link = "https://inshuti-yu-muryango-mu.vercel.app/";
+      } else {
+        responseData.redirect_link = group.link;
+      }
     }
 
     res.status(200).json(responseData);
