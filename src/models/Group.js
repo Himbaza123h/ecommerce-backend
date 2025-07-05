@@ -23,12 +23,10 @@ const groupSchema = new mongoose.Schema(
       type: String,
       required: false,
       trim: true,
+      default: null, // Add this line
       validate: {
         validator: function (v) {
-          // Only validate if link is provided
           if (!v) return true;
-
-          // Basic URL validation
           const urlRegex = /^https?:\/\/.+/;
           return urlRegex.test(v);
         },
