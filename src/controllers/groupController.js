@@ -1,5 +1,5 @@
 import Group from "../models/Group.js";
-import { sendGroupApprovalEmail } from '../utils/emailService.js';
+import { sendGroupApprovalEmail, sendGroupRejectionEmail } from '../utils/emailService.js';
 
 // @desc    Create a new group (User can create, needs admin approval)
 // @route   POST /api/groups
@@ -438,6 +438,7 @@ export const rejectGroup = async (req, res) => {
 // @desc    Join group (User)
 // @route   POST /api/groups/:id/join
 // @access  Private/User
+// @access  Private/User
 export const joinGroup = async (req, res) => {
   try {
     const groupId = req.params.id;
@@ -498,10 +499,18 @@ export const joinGroup = async (req, res) => {
       ? "Join request submitted successfully. Waiting for group admin approval."
       : "Successfully joined the group!";
 
-    res.status(200).json({
+    // Prepare response object
+    const responseData = {
       success: true,
       message,
-    });
+    };
+
+    // Add redirect_link only for public groups (not private)
+    if (!group.is_private && group.link) {
+      responseData.redirect_link = group.link;
+    }
+
+    res.status(200).json(responseData);
   } catch (error) {
     console.error("Join group error:", error);
     res.status(500).json({
@@ -603,7 +612,9 @@ export const rejectUserJoin = async (req, res) => {
     const { id: groupId, userId } = req.params;
     const currentUserId = req.user.id;
 
-    const group = await Group.findById(groupId);
+    const group = await Group.findById(groupId)
+      .populate('joined_users.user_id', 'fullName username email')
+      .populate('service_id', 'title');
 
     if (!group) {
       return res.status(404).json({
@@ -621,7 +632,7 @@ export const rejectUserJoin = async (req, res) => {
     }
 
     const joinRequest = group.joined_users.find(
-      (join) => join.user_id.toString() === userId
+      (join) => join.user_id._id.toString() === userId
     );
 
     if (!joinRequest) {
@@ -631,10 +642,29 @@ export const rejectUserJoin = async (req, res) => {
       });
     }
 
+    if (joinRequest.status === "rejected") {
+      return res.status(400).json({
+        success: false,
+        message: "User is already rejected",
+      });
+    }
+
     // Update status to rejected
     joinRequest.status = "rejected";
 
     await group.save();
+
+    // Send rejection email to user
+    try {
+      const userEmail = joinRequest.user_id.email;
+      const userName = joinRequest.user_id.fullName;
+      const groupName = group.name;
+
+      await sendGroupRejectionEmail(userName, userEmail, groupName);
+    } catch (emailError) {
+      console.error('Failed to send group rejection email:', emailError);
+      // Continue with rejection even if email fails
+    }
 
     res.status(200).json({
       success: true,
@@ -649,6 +679,7 @@ export const rejectUserJoin = async (req, res) => {
     });
   }
 };
+
 
 // @desc    Get group join requests (Group Admin only)
 // @route   GET /api/groups/:id/requests
