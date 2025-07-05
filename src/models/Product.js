@@ -25,6 +25,22 @@ const productSchema = new mongoose.Schema(
       trim: true,
       maxLength: [50, "Color cannot exceed 50 characters"],
     },
+    phone: {
+      type: String,
+      required: false,
+      trim: true,
+      maxLength: [20, "Phone number cannot exceed 20 characters"],
+      validate: {
+        validator: function (v) {
+          // Allow empty/null values, but validate format if provided
+          if (!v) return true;
+          // Basic phone number validation (digits, spaces, dashes, parentheses, plus)
+          return /^[\+]?[\d\s\-\(\)]+$/.test(v);
+        },
+        message: "Phone number format is invalid",
+      },
+      default: null,
+    },
     price: {
       type: Number,
       required: [true, "Product price is required"],
@@ -96,6 +112,7 @@ productSchema.index({ is_active: 1 });
 productSchema.index({ price: 1 });
 productSchema.index({ createdAt: -1 });
 productSchema.index({ expiration_date: 1 });
+productSchema.index({ phone: 1 });
 
 productSchema.virtual("is_expired").get(function () {
   if (!this.expiration_date) return false;

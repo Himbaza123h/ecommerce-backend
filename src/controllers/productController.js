@@ -2,10 +2,7 @@ import Product from "../models/Product.js";
 import ProductImage from "../models/ProductImage.js";
 import Category from "../models/Category.js";
 import Group from "../models/Group.js";
-import {
-  uploadImage,
-  deleteImage,
-} from "../config/cloudinary.js";
+import { uploadImage, deleteImage } from "../config/cloudinary.js";
 
 // Create new product
 export const createProduct = async (req, res) => {
@@ -18,6 +15,7 @@ export const createProduct = async (req, res) => {
       price,
       quantity,
       expiration_date,
+      phone,
     } = req.body;
 
     // Verify category exists and is active
@@ -60,6 +58,7 @@ export const createProduct = async (req, res) => {
       price: parseFloat(price),
       quantity: parseInt(quantity),
       expiration_date: expiration_date,
+      phone: phone || null,
     });
 
     const savedProduct = await product.save();
@@ -144,9 +143,9 @@ export const getAllProducts = async (req, res) => {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { color: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
       ];
     }
-
     if (category_id) {
       query.category_id = category_id;
     }
@@ -369,6 +368,7 @@ export const updateProduct = async (req, res) => {
       quantity,
       is_active,
       expiration_date,
+      phone,
     } = req.body;
 
     const product = await Product.findById(id);
@@ -431,6 +431,7 @@ export const updateProduct = async (req, res) => {
     if (quantity !== undefined) product.quantity = parseInt(quantity);
     if (is_active !== undefined) product.is_active = is_active;
     if (expiration_date) product.expiration_date = expiration_date;
+    if (phone !== undefined) product.phone = phone || null;
 
     const updatedProduct = await product.save();
 
@@ -946,9 +947,9 @@ export const getProductsByGroup = async (req, res) => {
       query.$or = [
         { name: { $regex: search, $options: "i" } },
         { color: { $regex: search, $options: "i" } },
+        { phone: { $regex: search, $options: "i" } },
       ];
     }
-
     if (category_id) {
       query.category_id = category_id;
     }

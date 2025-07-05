@@ -7,6 +7,9 @@ import {
   updateProfile,
   getAllUsers,
   getUserById,
+  updateUser,
+  deleteUser,
+  reactivateUser
 } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 import { adminAuth } from '../middleware/adminMiddleware.js';
@@ -23,5 +26,8 @@ router.get('/me', protect, getMe);
 router.put('/profile', protect, updateProfile);
 router.get('/users', adminAuth, getAllUsers);
 router.get('/users/:id', adminAuth, getUserById)
+router.put('/users/:id', adminAuth, updateUser);
+router.delete('/users/:id', adminAuth, deleteUser);
+router.patch('/users/:id/reactivate', adminAuth, reactivateUser);
 
 export default router;

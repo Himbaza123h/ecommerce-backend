@@ -321,6 +321,263 @@ export const getUserById = async (req, res) => {
   }
 };
 
+
+// @desc    Update user by ID (Admin only)
+// @route   PUT /api/auth/users/:id
+// @access  Private/Admin
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { fullName, username, email, phone, role, isActive } = req.body;
+
+    // Validate ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
+
+    // Find the user first
+    const existingUser = await User.findById(id);
+    if (!existingUser) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Prevent admin from updating their own role or status
+    if (existingUser._id.toString() === req.user.id) {
+      if (role !== undefined && role !== existingUser.role) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot modify your own role",
+        });
+      }
+      if (isActive !== undefined && isActive !== existingUser.isActive) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot modify your own account status",
+        });
+      }
+    }
+
+    // Check if username, email, or phone are being updated and if they're already taken
+    if (username) {
+      const userWithUsername = await User.findOne({
+        username,
+        _id: { $ne: id },
+      });
+
+      if (userWithUsername) {
+        return res.status(400).json({
+          success: false,
+          message: "Username already exists",
+        });
+      }
+    }
+
+    if (email) {
+      const userWithEmail = await User.findOne({
+        email,
+        _id: { $ne: id },
+      });
+
+      if (userWithEmail) {
+        return res.status(400).json({
+          success: false,
+          message: "Email already exists",
+        });
+      }
+    }
+
+    if (phone) {
+      const userWithPhone = await User.findOne({
+        phone,
+        _id: { $ne: id },
+      });
+
+      if (userWithPhone) {
+        return res.status(400).json({
+          success: false,
+          message: "Phone number already exists",
+        });
+      }
+    }
+
+    // Build update object with only provided fields
+    const updateFields = {};
+    if (fullName !== undefined) updateFields.fullName = fullName;
+    if (username !== undefined) updateFields.username = username;
+    if (email !== undefined) updateFields.email = email;
+    if (phone !== undefined) updateFields.phone = phone;
+    if (role !== undefined) updateFields.role = role;
+    if (isActive !== undefined) updateFields.isActive = isActive;
+
+    const user = await User.findByIdAndUpdate(
+      id,
+      updateFields,
+      {
+        new: true,
+        runValidators: true,
+      }
+    ).select("-password");
+
+    res.status(200).json({
+      success: true,
+      message: "User updated successfully",
+      user,
+    });
+  } catch (error) {
+    console.error("Update user error:", error);
+
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((err) => err.message);
+      return res.status(400).json({
+        success: false,
+        message: messages[0],
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: "Server error while updating user",
+    });
+  }
+};
+
+// @desc    Delete user (Deactivate) by ID (Admin only)
+// @route   DELETE /api/auth/users/:id
+// @access  Private/Admin
+export const deleteUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { permanent = false } = req.query; // Optional query param for permanent deletion
+
+    // Validate ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    // Prevent admin from deleting their own account
+    if (user._id.toString() === req.user.id) {
+      return res.status(400).json({
+        success: false,
+        message: "Cannot delete your own account",
+      });
+    }
+
+    // Check if this is the last admin user
+    if (user.role === "admin") {
+      const adminCount = await User.countDocuments({ 
+        role: "admin", 
+        isActive: true,
+        _id: { $ne: id }
+      });
+
+      if (adminCount === 0) {
+        return res.status(400).json({
+          success: false,
+          message: "Cannot delete the last admin user",
+        });
+      }
+    }
+
+    if (permanent === "true") {
+      // Permanent deletion (use with caution)
+      await User.findByIdAndDelete(id);
+      
+      res.status(200).json({
+        success: true,
+        message: "User permanently deleted",
+      });
+    } else {
+      // Soft delete (deactivate)
+      const deactivatedUser = await User.findByIdAndUpdate(
+        id,
+        { isActive: false },
+        { new: true }
+      ).select("-password");
+
+      res.status(200).json({
+        success: true,
+        message: "User deactivated successfully",
+        user: deactivatedUser,
+      });
+    }
+  } catch (error) {
+    console.error("Delete user error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while deleting user",
+    });
+  }
+};
+
+// @desc    Reactivate user by ID (Admin only)
+// @route   PATCH /api/auth/users/:id/reactivate
+// @access  Private/Admin
+export const reactivateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
+
+    const user = await User.findById(id);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    if (user.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: "User is already active",
+      });
+    }
+
+    const reactivatedUser = await User.findByIdAndUpdate(
+      id,
+      { isActive: true },
+      { new: true }
+    ).select("-password");
+
+    res.status(200).json({
+      success: true,
+      message: "User reactivated successfully",
+      user: reactivatedUser,
+    });
+  } catch (error) {
+    console.error("Reactivate user error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while reactivating user",
+    });
+  }
+};
+
 // @desc    Get all users (Admin only)
 // @route   GET /api/auth/users
 // @access  Private/Admin
