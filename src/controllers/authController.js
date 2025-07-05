@@ -257,7 +257,7 @@ export const getAllUsers = async (req, res) => {
   try {
     const { 
       page = 1, 
-      limit = 10, 
+      limit = 50, 
       active_only = "false", 
       role = "", 
       search = "" 
@@ -290,8 +290,8 @@ export const getAllUsers = async (req, res) => {
     const users = await User.find(query)
       .select('-password') // Exclude password field
       .sort({ createdAt: -1 }) // Sort by newest first
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
+      .limit(parseInt(limit))
+      .skip((parseInt(page) - 1) * parseInt(limit));
 
     // Get total count for pagination
     const total = await User.countDocuments(query);
@@ -326,21 +326,28 @@ export const getAllUsers = async (req, res) => {
       regularUsers: 0
     };
 
+    // Return clean array format for frontend
     res.status(200).json({
       success: true,
-      count: users.length,
-      total,
-      page: parseInt(page),
-      pages: Math.ceil(total / limit),
-      stats: userStats,
-      users
+      data: users, // Array of users for easy frontend iteration
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / parseInt(limit)),
+        totalUsers: total,
+        usersPerPage: parseInt(limit),
+        hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
+        hasPrev: parseInt(page) > 1
+      },
+      stats: userStats
     });
 
   } catch (error) {
     console.error('Get all users error:', error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching users'
+      message: 'Server error while fetching users',
+      data: [] // Return empty array on error
     });
   }
 };
+
