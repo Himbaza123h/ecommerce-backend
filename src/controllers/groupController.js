@@ -1,4 +1,5 @@
 import Group from "../models/Group.js";
+import Service from "../models/Service.js";
 import { sendGroupApprovalEmail, sendGroupRejectionEmail } from '../utils/emailService.js';
 
 // @desc    Create a new group (User can create, needs admin approval)
