@@ -283,6 +283,44 @@ export const updateProfile = async (req, res) => {
   }
 };
 
+
+// @desc    Get single user by ID (Admin only)
+// @route   GET /api/auth/users/:id
+// @access  Private/Admin
+export const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Validate ObjectId format
+    if (!id.match(/^[0-9a-fA-F]{24}$/)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid user ID format",
+      });
+    }
+
+    const user = await User.findById(id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      user,
+    });
+  } catch (error) {
+    console.error("Get user by ID error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error while fetching user",
+    });
+  }
+};
+
 // @desc    Get all users (Admin only)
 // @route   GET /api/auth/users
 // @access  Private/Admin
