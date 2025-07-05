@@ -98,7 +98,7 @@ export const createGroup = async (req, res) => {
 
 // @desc    Get all groups (with filtering options)
 // @route   GET /api/groups
-// @access  Public
+// @access  Public (but behavior changes based on auth)
 export const getAllGroups = async (req, res) => {
   try {
     const {
@@ -106,16 +106,41 @@ export const getAllGroups = async (req, res) => {
       limit = 10,
       service_id,
       is_private,
-      active_only = "true",
+      pending,
+      approved,
+      owner
     } = req.query;
 
     let query = {};
+    
+    // Check user authentication and role
+    const isAuthenticated = req.user && req.user.id;
+    const isAdmin = isAuthenticated && req.user.role === "admin";
+    const userId = isAuthenticated ? req.user.id : null;
 
-    if (active_only === "true") {
+    // Apply filtering logic based on user role and parameters
+    if (isAdmin) {
+      // Admin sees all groups by default
+      if (pending === "true") {
+        query.approval_status = "pending";
+      } else if (approved === "true") {
+        query.is_active = true;
+        query.approval_status = "approved";
+      }
+      // If neither pending nor approved is specified, show all groups
+    } else if (isAuthenticated && owner === "true") {
+      // Authenticated user requesting only their groups
+      query.$or = [
+        { created_by: userId },
+        { group_admin: userId }
+      ];
+    } else {
+      // Public access or regular user - only show active and approved groups
       query.is_active = true;
       query.approval_status = "approved";
     }
 
+    // Apply additional filters
     if (service_id) {
       query.service_id = service_id;
     }
@@ -127,6 +152,7 @@ export const getAllGroups = async (req, res) => {
     const groups = await Group.find(query)
       .populate("service_id", "title subtitle")
       .populate("group_admin", "fullName username")
+      .populate("created_by", "fullName username")
       .sort({ createdAt: -1 })
       .limit(limit * 1)
       .skip((page - 1) * limit);

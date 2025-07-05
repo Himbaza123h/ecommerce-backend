@@ -18,12 +18,16 @@ import {
   getGroupsByService
 } from '../controllers/groupController.js';
 
-import { protect } from '../middleware/auth.js';
+import { protect, optionalAuth } from '../middleware/auth.js';
+
 
 const router = express.Router();
 
 // Public routes
-router.get('/', getAllGroups);
+
+
+router.get('/', optionalAuth, getAllGroups);
+
 router.get('/service/:serviceId', getGroupsByService);
 
 // Protected routes (require authentication)
