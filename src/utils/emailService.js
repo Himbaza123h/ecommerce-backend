@@ -45,7 +45,7 @@ const createTransporter = () => {
   console.log('📧 Creating email transporter...');
   
   try {
-    const transporter = nodemailer.createTransporter({
+    const transporter = nodemailer.createTransport({
       host: EMAIL_CONFIG.SMTP_HOST,
       port: EMAIL_CONFIG.SMTP_PORT,
       secure: EMAIL_CONFIG.SMTP_PORT === 465, // true for 465, false for other ports
