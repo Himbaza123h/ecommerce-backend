@@ -1,5 +1,6 @@
 import Service from "../models/Service.js";
 import { uploadImage, deleteImage } from "../config/cloudinary.js";
+import Group from "../models/Group.js";
 
 // @desc    Create a new service (Admin only)
 // @route   POST /api/services
@@ -12,7 +13,8 @@ export const createService = async (req, res) => {
     if (!title || !subtitle || !description) {
       return res.status(400).json({
         success: false,
-        message: "Please provide all required fields: title, subtitle, description",
+        message:
+          "Please provide all required fields: title, subtitle, description",
       });
     }
 
@@ -30,7 +32,9 @@ export const createService = async (req, res) => {
     // Handle icon upload if provided
     if (req.file) {
       try {
-        const fileStr = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+        const fileStr = `data:${
+          req.file.mimetype
+        };base64,${req.file.buffer.toString("base64")}`;
         const iconResult = await uploadImage(fileStr, "services/icons");
         iconUrl = iconResult.url;
       } catch (error) {
@@ -115,11 +119,11 @@ export const getAllServices = async (req, res) => {
 export const getService = async (req, res) => {
   try {
     const service = await Service.findById(req.params.id).populate({
-      path: 'groups',
+      path: "groups",
       populate: {
-        path: 'group_admin',
-        select: 'fullName username'
-      }
+        path: "group_admin",
+        select: "fullName username",
+      },
     });
 
     if (!service) {
@@ -184,7 +188,9 @@ export const updateService = async (req, res) => {
           await deleteImage(`services/icons/${publicId}`);
         }
 
-        const fileStr = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+        const fileStr = `data:${
+          req.file.mimetype
+        };base64,${req.file.buffer.toString("base64")}`;
         const iconResult = await uploadImage(fileStr, "services/icons");
         iconUrl = iconResult.url;
       } catch (error) {
@@ -247,15 +253,17 @@ export const deleteService = async (req, res) => {
         message: "Service not found",
       });
     }
+    const groupsCount = await Group.countDocuments({
+      service_id: req.params.id,
+      is_active: true,
+      approval_status: "approved",
+    });
 
-    // Check if service has groups
-    const Group = mongoose.model('Group');
-    const groupsCount = await Group.countDocuments({ service_id: req.params.id });
-    
     if (groupsCount > 0) {
       return res.status(400).json({
         success: false,
-        message: "Cannot delete service with existing groups. Please delete all groups first.",
+        message:
+          "Cannot delete service with existing groups. Please delete all groups first.",
       });
     }
 
@@ -392,8 +400,6 @@ export const getServiceStats = async (req, res) => {
       });
     }
 
-    const Group = mongoose.model('Group');
-    
     // Get detailed stats
     const stats = await Group.aggregate([
       { $match: { service_id: service._id } },
@@ -404,48 +410,56 @@ export const getServiceStats = async (req, res) => {
           active_groups: {
             $sum: {
               $cond: [
-                { $and: [{ $eq: ["$is_active", true] }, { $eq: ["$approval_status", "approved"] }] },
+                {
+                  $and: [
+                    { $eq: ["$is_active", true] },
+                    { $eq: ["$approval_status", "approved"] },
+                  ],
+                },
                 1,
-                0
-              ]
-            }
+                0,
+              ],
+            },
           },
           pending_groups: {
             $sum: {
-              $cond: [{ $eq: ["$approval_status", "pending"] }, 1, 0]
-            }
+              $cond: [{ $eq: ["$approval_status", "pending"] }, 1, 0],
+            },
           },
           total_members: { $sum: "$members_count" },
           private_groups: {
             $sum: {
-              $cond: [{ $eq: ["$is_private", true] }, 1, 0]
-            }
+              $cond: [{ $eq: ["$is_private", true] }, 1, 0],
+            },
           },
           public_groups: {
             $sum: {
-              $cond: [{ $eq: ["$is_private", false] }, 1, 0]
-            }
-          }
-        }
-      }
+              $cond: [{ $eq: ["$is_private", false] }, 1, 0],
+            },
+          },
+        },
+      },
     ]);
 
-    const serviceStats = stats.length > 0 ? stats[0] : {
-      total_groups: 0,
-      active_groups: 0,
-      pending_groups: 0,
-      total_members: 0,
-      private_groups: 0,
-      public_groups: 0
-    };
+    const serviceStats =
+      stats.length > 0
+        ? stats[0]
+        : {
+            total_groups: 0,
+            active_groups: 0,
+            pending_groups: 0,
+            total_members: 0,
+            private_groups: 0,
+            public_groups: 0,
+          };
 
     res.status(200).json({
       success: true,
       service: {
         id: service._id,
         title: service.title,
-        ...serviceStats
-      }
+        ...serviceStats,
+      },
     });
   } catch (error) {
     console.error("Get service stats error:", error);
