@@ -1,6 +1,5 @@
 import Group from "../models/Group.js";
-import Service from "../models/Service.js";
-import { uploadImage, deleteImage } from "../config/cloudinary.js";
+import { sendGroupApprovalEmail } from '../utils/emailService.js';
 
 // @desc    Create a new group (User can create, needs admin approval)
 // @route   POST /api/groups
@@ -515,12 +514,16 @@ export const joinGroup = async (req, res) => {
 // @desc    Approve user join request (Group Admin only)
 // @route   PUT /api/groups/:id/approve/:userId
 // @access  Private/GroupAdmin
+
+// Replace the existing approveUserJoin function with this updated version
 export const approveUserJoin = async (req, res) => {
   try {
     const { id: groupId, userId } = req.params;
     const currentUserId = req.user.id;
 
-    const group = await Group.findById(groupId);
+    const group = await Group.findById(groupId)
+      .populate('joined_users.user_id', 'fullName username email')
+      .populate('service_id', 'title');
 
     if (!group) {
       return res.status(404).json({
@@ -538,7 +541,7 @@ export const approveUserJoin = async (req, res) => {
     }
 
     const joinRequest = group.joined_users.find(
-      (join) => join.user_id.toString() === userId
+      (join) => join.user_id._id.toString() === userId
     );
 
     if (!joinRequest) {
@@ -564,6 +567,19 @@ export const approveUserJoin = async (req, res) => {
     ).length;
 
     await group.save();
+
+    // Send approval email to user
+    try {
+      const userEmail = joinRequest.user_id.email;
+      const userName = joinRequest.user_id.fullName;
+      const groupName = group.name;
+      const groupLink = group.link; // Make sure your group model has this field
+
+      await sendGroupApprovalEmail(userName, userEmail, groupName, groupLink);
+    } catch (emailError) {
+      console.error('Failed to send group approval email:', emailError);
+      // Continue with approval even if email fails
+    }
 
     res.status(200).json({
       success: true,

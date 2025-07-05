@@ -1,19 +1,21 @@
-import User from '../models/User.js';
-import jwt from 'jsonwebtoken';
+import User from "../models/User.js";
+import jwt from "jsonwebtoken";
+import { sendWelcomeEmail } from "../utils/emailService.js";
 
 // Helper function to send token response
 const sendTokenResponse = (user, statusCode, res, message) => {
   const token = user.generateToken();
-  
+
   const options = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict',
-    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   };
 
-  res.status(statusCode)
-    .cookie('token', token, options)
+  res
+    .status(statusCode)
+    .cookie("token", token, options)
     .json({
       success: true,
       message,
@@ -22,11 +24,12 @@ const sendTokenResponse = (user, statusCode, res, message) => {
         id: user._id,
         fullName: user.fullName,
         username: user.username,
+        email: user.email,
         phone: user.phone,
         role: user.role,
         isActive: user.isActive,
-        createdAt: user.createdAt
-      }
+        createdAt: user.createdAt,
+      },
     });
 };
 
@@ -35,26 +38,30 @@ const sendTokenResponse = (user, statusCode, res, message) => {
 // @access  Public
 export const register = async (req, res) => {
   try {
-    const { fullName, username, phone, password } = req.body;
+    const { fullName, username, email, phone, password } = req.body;
 
     // Validation
-    if (!fullName || !username || !phone || !password) {
+    if (!fullName || !username || !email || !phone || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide all required fields'
+        message: "Please provide all required fields",
       });
     }
 
     // Check if user already exists
     const existingUser = await User.findOne({
-      $or: [{ username }, { phone }]
+      $or: [{ username }, { email }, { phone }],
     });
 
     if (existingUser) {
-      const field = existingUser.username === username ? 'Username' : 'Phone number';
+      let field = "User";
+      if (existingUser.username === username) field = "Username";
+      else if (existingUser.email === email) field = "Email";
+      else if (existingUser.phone === phone) field = "Phone number";
+
       return res.status(400).json({
         success: false,
-        message: `${field} already exists`
+        message: `${field} already exists`,
       });
     }
 
@@ -62,27 +69,35 @@ export const register = async (req, res) => {
     const user = await User.create({
       fullName,
       username,
+      email,
       phone,
-      password
+      password,
     });
 
-    sendTokenResponse(user, 201, res, 'User registered successfully');
+    // Send welcome email (don't block registration if email fails)
+    try {
+      await sendWelcomeEmail(user.fullName, user.email);
+    } catch (emailError) {
+      console.error("Failed to send welcome email:", emailError);
+      // Continue with registration even if email fails
+    }
 
+    sendTokenResponse(user, 201, res, "User registered successfully");
   } catch (error) {
-    console.error('Register error:', error);
-    
+    console.error("Register error:", error);
+
     // Handle validation errors
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
-        message: messages[0]
+        message: messages[0],
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Server error during registration'
+      message: "Server error during registration",
     });
   }
 };
@@ -98,20 +113,24 @@ export const login = async (req, res) => {
     if (!identifier || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide username/phone and password'
+        message: "Please provide username/email/phone and password",
       });
     }
 
-    // Find user by username or phone and include password
+    // Find user by username, email, or phone and include password
     const user = await User.findOne({
-      $or: [{ username: identifier }, { phone: identifier }],
-      isActive: true
-    }).select('+password');
+      $or: [
+        { username: identifier },
+        { email: identifier },
+        { phone: identifier },
+      ],
+      isActive: true,
+    }).select("+password");
 
     if (!user) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: "Invalid credentials",
       });
     }
 
@@ -120,17 +139,16 @@ export const login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid credentials'
+        message: "Invalid credentials",
       });
     }
 
-    sendTokenResponse(user, 200, res, 'Login successful');
-
+    sendTokenResponse(user, 200, res, "Login successful");
   } catch (error) {
-    console.error('Login error:', error);
+    console.error("Login error:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error during login'
+      message: "Server error during login",
     });
   }
 };
@@ -140,20 +158,20 @@ export const login = async (req, res) => {
 // @access  Private
 export const logout = async (req, res) => {
   try {
-    res.cookie('token', '', {
+    res.cookie("token", "", {
       httpOnly: true,
-      expires: new Date(0)
+      expires: new Date(0),
     });
 
     res.status(200).json({
       success: true,
-      message: 'Logged out successfully'
+      message: "Logged out successfully",
     });
   } catch (error) {
-    console.error('Logout error:', error);
+    console.error("Logout error:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error during logout'
+      message: "Server error during logout",
     });
   }
 };
@@ -164,23 +182,23 @@ export const logout = async (req, res) => {
 export const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
-    
+
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
     res.status(200).json({
       success: true,
-      user
+      user,
     });
   } catch (error) {
-    console.error('Get profile error:', error);
+    console.error("Get profile error:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: "Server error",
     });
   }
 };
@@ -190,62 +208,77 @@ export const getMe = async (req, res) => {
 // @access  Private
 export const updateProfile = async (req, res) => {
   try {
-    const { fullName, phone } = req.body;
+    const { fullName, email, phone } = req.body;
     const userId = req.user.id;
 
-    // Check if phone is being updated and if it's already taken
-    if (phone) {
-      const existingUser = await User.findOne({ 
-        phone, 
-        _id: { $ne: userId } 
+    // Check if email or phone is being updated and if they're already taken
+    if (email) {
+      const existingUser = await User.findOne({
+        email,
+        _id: { $ne: userId },
       });
-      
+
       if (existingUser) {
         return res.status(400).json({
           success: false,
-          message: 'Phone number already exists'
+          message: "Email already exists",
+        });
+      }
+    }
+
+    if (phone) {
+      const existingUser = await User.findOne({
+        phone,
+        _id: { $ne: userId },
+      });
+
+      if (existingUser) {
+        return res.status(400).json({
+          success: false,
+          message: "Phone number already exists",
         });
       }
     }
 
     const user = await User.findByIdAndUpdate(
       userId,
-      { 
+      {
         ...(fullName && { fullName }),
-        ...(phone && { phone })
+        ...(email && { email }),
+        ...(phone && { phone }),
       },
-      { 
-        new: true, 
-        runValidators: true 
+      {
+        new: true,
+        runValidators: true,
       }
     );
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'User not found'
+        message: "User not found",
       });
     }
 
     res.status(200).json({
       success: true,
-      message: 'Profile updated successfully',
-      user
+      message: "Profile updated successfully",
+      user,
     });
   } catch (error) {
-    console.error('Update profile error:', error);
-    
-    if (error.name === 'ValidationError') {
-      const messages = Object.values(error.errors).map(err => err.message);
+    console.error("Update profile error:", error);
+
+    if (error.name === "ValidationError") {
+      const messages = Object.values(error.errors).map((err) => err.message);
       return res.status(400).json({
         success: false,
-        message: messages[0]
+        message: messages[0],
       });
     }
 
     res.status(500).json({
       success: false,
-      message: 'Server error'
+      message: "Server error",
     });
   }
 };
@@ -255,12 +288,12 @@ export const updateProfile = async (req, res) => {
 // @access  Private/Admin
 export const getAllUsers = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 50, 
-      active_only = "false", 
-      role = "", 
-      search = "" 
+    const {
+      page = 1,
+      limit = 50,
+      active_only = "false",
+      role = "",
+      search = "",
     } = req.query;
 
     // Build query object
@@ -278,17 +311,18 @@ export const getAllUsers = async (req, res) => {
 
     // Search functionality
     if (search && search.trim() !== "") {
-      const searchRegex = new RegExp(search.trim(), 'i');
+      const searchRegex = new RegExp(search.trim(), "i");
       query.$or = [
         { fullName: searchRegex },
         { username: searchRegex },
-        { phone: searchRegex }
+        { email: searchRegex },
+        { phone: searchRegex },
       ];
     }
 
     // Execute query with pagination
     const users = await User.find(query)
-      .select('-password') // Exclude password field
+      .select("-password") // Exclude password field
       .sort({ createdAt: -1 }) // Sort by newest first
       .limit(parseInt(limit))
       .skip((parseInt(page) - 1) * parseInt(limit));
@@ -303,28 +337,31 @@ export const getAllUsers = async (req, res) => {
           _id: null,
           totalUsers: { $sum: 1 },
           activeUsers: {
-            $sum: { $cond: [{ $eq: ["$isActive", true] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ["$isActive", true] }, 1, 0] },
           },
           inactiveUsers: {
-            $sum: { $cond: [{ $eq: ["$isActive", false] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ["$isActive", false] }, 1, 0] },
           },
           adminUsers: {
-            $sum: { $cond: [{ $eq: ["$role", "admin"] }, 1, 0] }
+            $sum: { $cond: [{ $eq: ["$role", "admin"] }, 1, 0] },
           },
           regularUsers: {
-            $sum: { $cond: [{ $eq: ["$role", "user"] }, 1, 0] }
-          }
-        }
-      }
+            $sum: { $cond: [{ $eq: ["$role", "user"] }, 1, 0] },
+          },
+        },
+      },
     ]);
 
-    const userStats = stats.length > 0 ? stats[0] : {
-      totalUsers: 0,
-      activeUsers: 0,
-      inactiveUsers: 0,
-      adminUsers: 0,
-      regularUsers: 0
-    };
+    const userStats =
+      stats.length > 0
+        ? stats[0]
+        : {
+            totalUsers: 0,
+            activeUsers: 0,
+            inactiveUsers: 0,
+            adminUsers: 0,
+            regularUsers: 0,
+          };
 
     // Return clean array format for frontend
     res.status(200).json({
@@ -336,18 +373,16 @@ export const getAllUsers = async (req, res) => {
         totalUsers: total,
         usersPerPage: parseInt(limit),
         hasNext: parseInt(page) < Math.ceil(total / parseInt(limit)),
-        hasPrev: parseInt(page) > 1
+        hasPrev: parseInt(page) > 1,
       },
-      stats: userStats
+      stats: userStats,
     });
-
   } catch (error) {
-    console.error('Get all users error:', error);
+    console.error("Get all users error:", error);
     res.status(500).json({
       success: false,
-      message: 'Server error while fetching users',
-      data: [] // Return empty array on error
+      message: "Server error while fetching users",
+      data: [], // Return empty array on error
     });
   }
 };
-
