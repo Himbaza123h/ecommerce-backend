@@ -7,14 +7,15 @@ import { uploadImage, deleteImage } from "../config/cloudinary.js";
 // @access  Private/User
 export const createGroup = async (req, res) => {
   try {
-    const { name, description, is_private, service_id } = req.body;
+    const { name, description, is_private, service_id, link } = req.body;
     const userId = req.user.id;
 
     // Validation
     if (!name || !description || !service_id) {
       return res.status(400).json({
         success: false,
-        message: "Please provide all required fields: name, description, service_id",
+        message:
+          "Please provide all required fields: name, description, service_id",
       });
     }
 
@@ -28,9 +29,9 @@ export const createGroup = async (req, res) => {
     }
 
     // Check if group with same name already exists in this service
-    const existingGroup = await Group.findOne({ 
-      name, 
-      service_id: service_id 
+    const existingGroup = await Group.findOne({
+      name,
+      service_id: service_id,
     });
     if (existingGroup) {
       return res.status(400).json({
@@ -44,7 +45,9 @@ export const createGroup = async (req, res) => {
     // Handle icon upload if provided
     if (req.file) {
       try {
-        const fileStr = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+        const fileStr = `data:${
+          req.file.mimetype
+        };base64,${req.file.buffer.toString("base64")}`;
         const iconResult = await uploadImage(fileStr, "groups/icons");
         iconUrl = iconResult.url;
       } catch (error) {
@@ -66,7 +69,8 @@ export const createGroup = async (req, res) => {
       created_by: userId,
       group_admin: userId,
       approval_status: "pending",
-      is_active: false, // Will be activated after admin approval
+      is_active: false,
+      ...(link && { link }), // Add link if provided
     });
 
     res.status(201).json({
@@ -97,25 +101,25 @@ export const createGroup = async (req, res) => {
 // @access  Public
 export const getAllGroups = async (req, res) => {
   try {
-    const { 
-      page = 1, 
-      limit = 10, 
-      service_id, 
-      is_private, 
-      active_only = "true" 
+    const {
+      page = 1,
+      limit = 10,
+      service_id,
+      is_private,
+      active_only = "true",
     } = req.query;
 
     let query = {};
-    
+
     if (active_only === "true") {
       query.is_active = true;
       query.approval_status = "approved";
     }
-    
+
     if (service_id) {
       query.service_id = service_id;
     }
-    
+
     if (is_private !== undefined) {
       query.is_private = is_private === "true";
     }
@@ -181,7 +185,7 @@ export const getGroup = async (req, res) => {
 // @access  Private/GroupAdmin or Admin
 export const updateGroup = async (req, res) => {
   try {
-    const { name, description, is_private } = req.body;
+    const { name, description, is_private, link } = req.body;
     const groupId = req.params.id;
     const userId = req.user.id;
 
@@ -231,7 +235,9 @@ export const updateGroup = async (req, res) => {
           await deleteImage(`groups/icons/${publicId}`);
         }
 
-        const fileStr = `data:${req.file.mimetype};base64,${req.file.buffer.toString('base64')}`;
+        const fileStr = `data:${
+          req.file.mimetype
+        };base64,${req.file.buffer.toString("base64")}`;
         const iconResult = await uploadImage(fileStr, "groups/icons");
         iconUrl = iconResult.url;
       } catch (error) {
@@ -249,6 +255,7 @@ export const updateGroup = async (req, res) => {
         ...(name && { name }),
         ...(description && { description }),
         ...(is_private !== undefined && { is_private: JSON.parse(is_private) }),
+        ...(link !== undefined && { link }), // Add this line
         group_icon: iconUrl,
       },
       {
@@ -340,9 +347,9 @@ export const approveGroup = async (req, res) => {
   try {
     const group = await Group.findByIdAndUpdate(
       req.params.id,
-      { 
+      {
         approval_status: "approved",
-        is_active: true 
+        is_active: true,
       },
       { new: true }
     );
@@ -375,9 +382,9 @@ export const rejectGroup = async (req, res) => {
   try {
     const group = await Group.findByIdAndUpdate(
       req.params.id,
-      { 
+      {
         approval_status: "rejected",
-        is_active: false 
+        is_active: false,
       },
       { new: true }
     );
@@ -447,7 +454,7 @@ export const joinGroup = async (req, res) => {
 
     // Add user to joined_users array
     const joinStatus = group.is_private ? "pending" : "approved";
-    
+
     group.joined_users.push({
       user_id: userId,
       status: joinStatus,
@@ -462,7 +469,7 @@ export const joinGroup = async (req, res) => {
 
     await group.save();
 
-    const message = group.is_private 
+    const message = group.is_private
       ? "Join request submitted successfully. Waiting for group admin approval."
       : "Successfully joined the group!";
 
@@ -658,9 +665,11 @@ export const getMyGroups = async (req, res) => {
     const groups = await Group.find({
       "joined_users.user_id": userId,
     })
-    .populate("service_id", "title subtitle")
-    .populate("group_admin", "fullName username")
-    .select("name description group_icon members_count is_private joined_users service_id group_admin");
+      .populate("service_id", "title subtitle")
+      .populate("group_admin", "fullName username")
+      .select(
+        "name description group_icon members_count is_private joined_users service_id group_admin"
+      );
 
     const userGroups = groups.map((group) => ({
       ...group.toObject(),
@@ -728,7 +737,7 @@ export const getGroupsByService = async (req, res) => {
     const query = {
       service_id: serviceId,
       is_active: true,
-      approval_status: "approved"
+      approval_status: "approved",
     };
 
     const groups = await Group.find(query)

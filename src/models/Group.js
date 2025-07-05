@@ -19,6 +19,22 @@ const groupSchema = new mongoose.Schema(
       required: [true, "Group icon is required"],
       trim: true,
     },
+    link: {
+      type: String,
+      required: false,
+      trim: true,
+      validate: {
+        validator: function (v) {
+          // Only validate if link is provided
+          if (!v) return true;
+
+          // Basic URL validation
+          const urlRegex = /^https?:\/\/.+/;
+          return urlRegex.test(v);
+        },
+        message: "Please provide a valid URL starting with http:// or https://",
+      },
+    },
     is_active: {
       type: Boolean,
       default: false, // Groups need admin approval first
@@ -48,27 +64,29 @@ const groupSchema = new mongoose.Schema(
       min: [0, "Members count cannot be negative"],
     },
     // Array to store user IDs who joined the group
-    joined_users: [{
-      user_id: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
-        required: true
+    joined_users: [
+      {
+        user_id: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        joined_at: {
+          type: Date,
+          default: Date.now,
+        },
+        status: {
+          type: String,
+          enum: ["pending", "approved", "rejected"],
+          default: "pending",
+        },
+        role: {
+          type: String,
+          enum: ["member", "admin"],
+          default: "member",
+        },
       },
-      joined_at: {
-        type: Date,
-        default: Date.now
-      },
-      status: {
-        type: String,
-        enum: ['pending', 'approved', 'rejected'],
-        default: 'pending'
-      },
-      role: {
-        type: String,
-        enum: ['member', 'admin'],
-        default: 'member'
-      }
-    }],
+    ],
     slug: {
       type: String,
       unique: true,
@@ -77,9 +95,9 @@ const groupSchema = new mongoose.Schema(
     },
     approval_status: {
       type: String,
-      enum: ['pending', 'approved', 'rejected'],
-      default: 'pending'
-    }
+      enum: ["pending", "approved", "rejected"],
+      default: "pending",
+    },
   },
   {
     timestamps: true,
@@ -112,45 +130,45 @@ groupSchema.pre("save", async function (next) {
 });
 
 // Post-save hook to update service counts
-groupSchema.post('save', async function(doc) {
+groupSchema.post("save", async function (doc) {
   try {
-    const Service = mongoose.model('Service');
+    const Service = mongoose.model("Service");
     const service = await Service.findById(doc.service_id);
     if (service) {
       await service.updateCounts();
     }
   } catch (error) {
-    console.error('Error updating service counts after group save:', error);
+    console.error("Error updating service counts after group save:", error);
   }
 });
 
 // Post-remove hook to update service counts
-groupSchema.post('findOneAndDelete', async function(doc) {
+groupSchema.post("findOneAndDelete", async function (doc) {
   try {
     if (doc) {
-      const Service = mongoose.model('Service');
+      const Service = mongoose.model("Service");
       const service = await Service.findById(doc.service_id);
       if (service) {
         await service.updateCounts();
       }
     }
   } catch (error) {
-    console.error('Error updating service counts after group deletion:', error);
+    console.error("Error updating service counts after group deletion:", error);
   }
 });
 
 // Post-update hook to update service counts
-groupSchema.post('findOneAndUpdate', async function(doc) {
+groupSchema.post("findOneAndUpdate", async function (doc) {
   try {
     if (doc) {
-      const Service = mongoose.model('Service');
+      const Service = mongoose.model("Service");
       const service = await Service.findById(doc.service_id);
       if (service) {
         await service.updateCounts();
       }
     }
   } catch (error) {
-    console.error('Error updating service counts after group update:', error);
+    console.error("Error updating service counts after group update:", error);
   }
 });
 
@@ -168,7 +186,11 @@ groupSchema.index({ approval_status: 1 });
 
 // Virtual for formatted members count
 groupSchema.virtual("formatted_members").get(function () {
-  if (this.members_count === undefined || this.members_count === null || isNaN(this.members_count)) {
+  if (
+    this.members_count === undefined ||
+    this.members_count === null ||
+    isNaN(this.members_count)
+  ) {
     return "0 members";
   }
   try {
@@ -184,21 +206,21 @@ groupSchema.virtual("formatted_members").get(function () {
 
 // Static method to get active groups
 groupSchema.statics.getActiveGroups = function () {
-  return this.find({ is_active: true, approval_status: 'approved' });
+  return this.find({ is_active: true, approval_status: "approved" });
 };
 
 // Static method to get groups by service
 groupSchema.statics.getGroupsByService = function (serviceId) {
-  return this.find({ 
-    service_id: serviceId, 
-    is_active: true, 
-    approval_status: 'approved' 
+  return this.find({
+    service_id: serviceId,
+    is_active: true,
+    approval_status: "approved",
   });
 };
 
 // Static method to get popular groups
 groupSchema.statics.getPopularGroups = function (limit = 10) {
-  return this.find({ is_active: true, approval_status: 'approved' })
+  return this.find({ is_active: true, approval_status: "approved" })
     .sort({ members_count: -1 })
     .limit(limit);
 };
@@ -225,7 +247,9 @@ groupSchema.methods.isGroupAdmin = function (userId) {
 // Instance method to check if user is member
 groupSchema.methods.isMember = function (userId) {
   return this.joined_users.some(
-    (user) => user.user_id.toString() === userId.toString() && user.status === "approved"
+    (user) =>
+      user.user_id.toString() === userId.toString() &&
+      user.status === "approved"
   );
 };
 
